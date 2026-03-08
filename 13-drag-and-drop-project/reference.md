@@ -1,0 +1,4 @@
+## Commands
+```
+tsc -w
+```
