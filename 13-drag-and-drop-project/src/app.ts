@@ -139,7 +139,13 @@ class ProjectList {
 
         // Register a listener to update the assignedProjects and re-render the list when the state changes
         projectState.addListener((projects: any[]) => {
-            this.assignedProjects = projects;
+            const relevantProjects = projects.filter((prj => {
+                if (this.type === 'active') {
+                    return prj.status === ProjectStatus.Active
+                }
+                return prj.status === ProjectStatus.Finished
+            }))
+            this.assignedProjects = relevantProjects;
             this.renderProjects()
         })
 
@@ -149,6 +155,8 @@ class ProjectList {
 
     private renderProjects() {
         const listEl = document.getElementById(`${this.type}-projects-list`)! as HTMLUListElement
+        // Clear listEl before render with a new incoming project
+        listEl.innerHTML = ''
         for (const prjItem of this.assignedProjects) {
             const listItem = document.createElement('li')
             listItem.textContent = prjItem.title
