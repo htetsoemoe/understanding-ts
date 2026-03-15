@@ -1,96 +1,249 @@
 ## Commands
-```
+
+```bash
 tsc -w
 ```
 
-## Project Logic and Flow
+## Project Overview
 
-This project builds a small project-management UI from HTML templates and TypeScript classes. The main runtime flow starts in [`src/app.ts`](d:\understanding-ts\13-drag-and-drop-project\src\app.ts), where three objects are created:
+This project builds a small project-management UI with:
+
+- HTML `<template>` elements
+- TypeScript classes
+- a shared singleton state store
+- form validation
+- drag-and-drop between `Active` and `Finished` project lists
+
+The app starts from `src/app.ts` and renders into the `#app` element in `index.html`.
+
+## Main Runtime Flow
+
+When `dist/app.js` runs, these objects are created:
 
 - `new ProjectInput()`
 - `new ProjectList('active')`
 - `new ProjectList('finished')`
 
-These instances wire the form and the two project lists into the DOM.
+This creates:
 
-## High-Level Flow
+- the form at the top
+- one list for active projects
+- one list for finished projects
 
-1. The browser loads [`index.html`](d:\understanding-ts\13-drag-and-drop-project\index.html) and then executes `dist/app.js`.
-2. `ProjectInput` clones the `#project-input` template and inserts the form into `#app`.
-3. Two `ProjectList` instances clone the `#project-list` template and create:
-   - `active-projects`
-   - `finished-projects`
-4. When the form is submitted, input values are collected and validated.
-5. If validation passes, a new project object is added to the shared `ProjectState`.
-6. `ProjectState` notifies every registered listener.
-7. Both project lists receive the updated project array and re-render their `<li>` items.
+## Program Flow
 
-## Core Pieces
+### 1. App startup
 
-### 1. `ProjectState`
+The browser loads `index.html`, then loads `dist/app.js`.
 
-`ProjectState` is the central data store for the app.
+At the bottom of `src/app.ts`, three class instances are created:
 
-- It uses the singleton pattern through `static getInstance()`.
-- It keeps:
-  - `listeners`: functions to call whenever data changes
-  - `projects`: the current project objects
-- `addProject(title, description, numOfPeople)` creates a project object and pushes it into `projects`.
-- After adding a project, it loops over all listeners and passes a copy of the projects array using `slice()`.
+- `ProjectInput`
+- `ProjectList('active')`
+- `ProjectList('finished')`
 
-Why this matters:
-- UI classes do not own the data.
-- State changes happen in one place.
-- Any UI section can subscribe and react when data changes.
+Each class extends the generic `Component<T, U>` base class, which:
 
-### 2. `ProjectInput`
+- finds a `<template>`
+- clones it with `document.importNode(...)`
+- attaches the new element into the host element
 
-`ProjectInput` is responsible for the form.
+### 2. User adds a project
+
+`ProjectInput` handles form submission.
+
+Flow:
+
+1. The user enters `title`, `description`, and `people`.
+2. `submitHandler(event)` runs on form submit.
+3. `gatherUserInput()` reads the values.
+4. `validate()` checks the rules.
+5. If valid, `projectState.addProject(...)` creates a new `Project`.
+6. The new project is added with status `ProjectStatus.Active`.
+7. `ProjectState` calls all registered listeners.
+
+### 3. Lists react to state updates
+
+Each `ProjectList` registers a listener with `projectState.addListener(...)`.
+
+When state changes:
+
+- the active list keeps only projects with `ProjectStatus.Active`
+- the finished list keeps only projects with `ProjectStatus.Finished`
+- `renderProjects()` clears the current `<ul>`
+- a new `ProjectItem` is created for each assigned project
+
+This makes the UI reactive: the DOM is rebuilt from the latest state whenever data changes.
+
+## Core Classes
+
+### `Project`
+
+Represents one project item.
+
+Properties:
+
+- `id`
+- `title`
+- `description`
+- `people`
+- `status`
+
+### `ProjectState`
+
+This is the shared app state.
 
 Responsibilities:
-- Clone the `#project-input` template
-- Read form field values
-- Validate user input
-- Submit valid projects to `ProjectState`
-- Clear the form afterward
+
+- store all project objects
+- add new projects
+- move projects between `Active` and `Finished`
+- notify UI listeners after every change
+
+Important methods:
+
+- `addProject(title, description, numOfPeople)`
+  - creates a new project with `Active` status
+- `moveProject(projectId, newStatus)`
+  - finds the project by `id`
+  - updates its status
+  - notifies listeners if the status changed
+- `updateListeners()`
+  - sends a copied projects array to every listener
+
+This uses the singleton pattern through `ProjectState.getInstance()`, so every component works with the same shared data source.
+
+### `ProjectInput`
+
+Handles the form UI and validation.
+
+Responsibilities:
+
+- render the input form
+- listen for `submit`
+- collect field values
+- validate input
+- add a new project to state
+- clear the form
 
 Important methods:
 
 - `configure()`
-  - attaches the `submit` event listener
 - `gatherUserInput()`
-  - reads `title`, `description`, and `people`
-  - builds validation objects
-  - returns `[title, description, people]` if valid
-  - otherwise shows an alert
+- `clearInputs()`
 - `submitHandler(event)`
-  - prevents default form submission
-  - gets validated input
-  - sends it to `projectState.addProject(...)`
-  - clears the form
 
-### 3. `ProjectList`
+### `ProjectList`
 
-`ProjectList` is responsible for rendering a project section.
+Represents one drop area and one rendered project list.
 
-Each instance:
-- clones the `#project-list` template
-- gets a `type` of either `'active'` or `'finished'`
-- inserts itself into the DOM
-- subscribes to `projectState`
+Each instance is created with:
 
-When state changes:
-- the listener receives the full projects array
-- `assignedProjects` is updated
-- `renderProjects()` appends `<li>` elements to that list
+- `'active'`
+- or `'finished'`
 
-Current behavior:
-- both `active` and `finished` lists receive the same projects
-- there is no filtering by status yet
+Responsibilities:
+
+- render the section title and `<ul>`
+- subscribe to state updates
+- filter projects by status
+- render `ProjectItem` instances
+- act as a drag target
+
+Important methods:
+
+- `configure()`
+- `renderContent()`
+- `renderProjects()`
+- `dragOverHandler(event)`
+- `dropHandler(event)`
+- `dragLeaveHandler(event)`
+
+### `ProjectItem`
+
+Represents a single draggable `<li>` project.
+
+Responsibilities:
+
+- render the project title, people count, and description
+- make the item draggable
+- place the project `id` into `dataTransfer` during drag start
+
+Important methods:
+
+- `dragStartHandler(event)`
+- `dragEndHandler(event)`
+- `renderContent()`
+
+## Drag-and-Drop Feature
+
+Drag-and-drop is implemented with two interfaces:
+
+- `Draggable`
+- `DragTarget`
+
+### `Draggable`
+
+Implemented by `ProjectItem`.
+
+Methods:
+
+- `dragStartHandler(event: DragEvent)`
+- `dragEndHandler(event: DragEvent)`
+
+Behavior:
+
+- when dragging starts, the project id is stored with:
+  - `event.dataTransfer!.setData('text/plain', this.project.id)`
+- `effectAllowed` is set to `'move'`
+
+This allows the drop target to know which project was dragged.
+
+### `DragTarget`
+
+Implemented by `ProjectList`.
+
+Methods:
+
+- `dragOverHandler(event: DragEvent)`
+- `dropHandler(event: DragEvent)`
+- `dragLeaveHandler(event: DragEvent)`
+
+Behavior:
+
+- `dragOverHandler(...)`
+  - checks whether the drag payload contains `'text/plain'`
+  - calls `event.preventDefault()`
+  - adds the `droppable` CSS class to highlight the target list
+- `dropHandler(...)`
+  - reads the dragged project id from `dataTransfer`
+  - calls `projectState.moveProject(...)`
+  - removes the highlight class
+- `dragLeaveHandler(...)`
+  - removes the highlight if the cursor leaves the drop zone
+
+## Drag-and-Drop Program Flow
+
+This is the actual flow when moving a project from `Active` to `Finished`:
+
+1. The user starts dragging a `ProjectItem`.
+2. `dragStartHandler()` stores the project id in `dataTransfer`.
+3. The dragged item is moved over the `Finished` list.
+4. `ProjectList.dragOverHandler()` runs repeatedly.
+5. Because the payload contains `'text/plain'`, `event.preventDefault()` allows dropping.
+6. The `droppable` CSS class is added to the target `<ul>`.
+7. The user releases the mouse.
+8. `dropHandler()` reads the project id.
+9. `projectState.moveProject(projectId, ProjectStatus.Finished)` updates the project status.
+10. `ProjectState` notifies all listeners.
+11. The active list re-filters and removes that project.
+12. The finished list re-filters and renders that project.
+
+The reverse flow is the same when dragging from `Finished` back to `Active`.
 
 ## Validation Logic
 
-The `Validatable` interface defines possible validation rules:
+The `Validatable` interface supports:
 
 - `required`
 - `minLength`
@@ -98,48 +251,40 @@ The `Validatable` interface defines possible validation rules:
 - `min`
 - `max`
 
-The `validate()` function checks the provided rules and returns `true` or `false`.
+The `validate()` function applies these checks and returns `true` or `false`.
 
-Current form rules:
+Current rules:
+
 - `title`: required
-- `description`: required and minimum length of `5`
-- `people`: required, between `1` and `50`
+- `description`: required, minimum length `5`
+- `people`: required, minimum `1`, maximum `5`
 
 ## `autobind` Decorator
 
-The `@autobind` decorator is used on `submitHandler`.
+The `@autobind` decorator is used so event handler methods keep the correct `this` value.
 
-Purpose:
-- it automatically binds `this` to the class instance
-- this avoids losing context when the method is passed as an event callback
+This matters for callbacks such as:
 
-Without it, `this.element.addEventListener('submit', this.submitHandler)` would not reliably point to the `ProjectInput` instance.
+- `submitHandler`
+- `dragStartHandler`
+- `dragOverHandler`
+- `dropHandler`
+- `dragLeaveHandler`
 
-## DOM Template Usage
+Without `@autobind`, `this` would often refer to the DOM element instead of the class instance.
 
-The HTML uses `<template>` elements so the structure can be defined once and cloned in TypeScript.
+## Template Structure
 
-Templates:
-- `#project-input`: the form
-- `#project-list`: the list section
-- `#single-project`: declared, but not used yet in the current TypeScript code
+The HTML templates used by the app are:
 
-This keeps HTML structure separate from rendering logic.
+- `#project-input`
+- `#project-list`
+- `#single-project`
 
-## Important Note About Drag and Drop
+Usage:
 
-Despite the folder name, the current code does not yet implement drag-and-drop logic.
+- `#project-input` creates the form
+- `#project-list` creates each project section
+- `#single-project` creates each draggable `<li>`
 
-Missing pieces would normally include:
-- drag event interfaces
-- draggable project items
-- drop targets for active/finished columns
-- project status switching when an item is dropped
-
-So the current project is best described as:
-- template-based rendering
-- singleton state management
-- form input and validation
-- reactive list updates
-
-not a full drag-and-drop workflow yet.
+This keeps structure in HTML and behavior in TypeScript.
