@@ -3,7 +3,7 @@
 const form = document.querySelector('form')!
 const addressInput = document.getElementById('address')! as HTMLInputElement
 
-const GOOGLE_API_KEY = 'AIzaSyCIaAc2c5M3VpbCH6PPq_guwy9lHuowXOs' // this is a dummy api key
+const GOOGLE_API_KEY = 'Your_Google_Geocoding_API_KEY'
 
 declare var google: any
 
